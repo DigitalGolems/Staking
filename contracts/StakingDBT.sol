@@ -8,10 +8,17 @@ import "../Digibytes/Digibytes.sol";
 import "../DigitalGolems/DigitalGolems.sol";
 import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 import "../Utils/SafeMath.sol";
-
+import "@openzeppelin/contracts/utils/Counters.sol";
 
 contract StakingDBT is GetPrice {
+    using Counters for Counters.Counter;
+
     using SafeMath for uint256;
+    Counters.Counter private mintedOrders;
+
+    event BlockTokens(address player, uint256 orderID);
+    event AheadOfTime(address player, uint256 orderID, uint256 startedTime, uint256 aheadOfTime);
+    event Farm(address player, uint256 orderID);
 
     struct Order {
         uint256 orderID;
@@ -25,7 +32,7 @@ contract StakingDBT is GetPrice {
 
     uint256 oneDIGPrice;
     uint256 thisDBTBalance;
-    
+
     Digibytes public DBT;
     DigitalGolems public DIG;
 
@@ -53,11 +60,7 @@ contract StakingDBT is GetPrice {
         //price multiply by 10 to the power of token decimals
         uint256 totalAmountInDBT = oneDIGPriceInDBT * 10 ** getDecimalsTest();
         //counting comission
-        uint256 comission = totalAmountInDBT * 3 / 1000; //0,3% 
-        //checking if user have amount for staking in dbt and commision
-        require(DBT.balanceOf(msg.sender) >= totalAmountInDBT + comission, "Not enough DBT");
-        //check if we can use this money
-        require(DBT.allowance(msg.sender, address(this)) >= totalAmountInDBT + comission, "Not enough allowance DBT");
+        uint256 comission = totalAmountInDBT * 3 / 1000; //0,3%
         //transfer to this address
         DBT.transferFrom(msg.sender, address(this), totalAmountInDBT + comission);
         //creating order for staking
@@ -74,6 +77,7 @@ contract StakingDBT is GetPrice {
         userOrderCount[msg.sender] = userOrderCount[msg.sender].add(1);
         //take comission to this address
         thisDBTBalance = thisDBTBalance.add(comission);
+        emit BlockTokens(msg.sender, orders.length);
     }
 
     //fetching stakers orders
@@ -94,7 +98,7 @@ contract StakingDBT is GetPrice {
     function aheadOfTime(uint256 orderID) public {
         //only staker of this order
         require(orders[orderID].staker == msg.sender, "You not staker");
-        //if time already ended he cant withdraw with fine 
+        //if time already ended he cant withdraw with fine
         //it's from unnecessary calls
         require(block.timestamp < orders[orderID].timeWhenEnded, "Time already ended");
         //users order -1
@@ -106,6 +110,7 @@ contract StakingDBT is GetPrice {
         //order equal 0
         orders[orderID].staker = address(0);
         orders[orderID].deposit = 0;
+        emit AheadOfTime(msg.sender, orderID, orders[orderID].timeWhenEnded, block.timestamp);
         orders[orderID].timeWhenEnded = 0;
         orders[orderID].minted = false;
         //transfer 80% DBT to staker
@@ -113,18 +118,16 @@ contract StakingDBT is GetPrice {
     }
 
     function farmDIG(
-        uint256 orderID,
-        string memory tokenURI, 
-        uint8 v,
-        bytes32[] memory rs,
-        uint8[] memory kindSeries
+        uint256 orderID
     ) external isTimeToFarmEnded(orderID) {
         require(msg.sender == orders[orderID].staker, "You not staker");
-        DIG.awardItem(msg.sender, tokenURI, v, rs, kindSeries);
+        mintedOrders.increment();
+        DIG.awardItemStaking(msg.sender, mintedOrders.current());
         DBT.transfer(msg.sender, orders[orderID].deposit);
         orders[orderID].deposit = 0;
         orders[orderID].timeWhenEnded = 0;
         orders[orderID].minted = true;
+        emit Farm(msg.sender, orderID);
     }
 
     function mockFarmTime(uint256 orderID, uint256 _newTime) public isOwner {

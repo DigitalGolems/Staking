@@ -7,7 +7,7 @@ import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 import "../Utils/Owner.sol";
 
 contract GetPrice is Owner {
-    
+
     AggregatorV3Interface internal priceFeed;
 
     //0x1a602D4928faF0A153A520f58B332f9CAFF320f7 BTC/ETH
@@ -15,13 +15,12 @@ contract GetPrice is Owner {
         priceFeed = AggregatorV3Interface(_priceFeed);
     }
 
-
     /**
      * Returns the latest price
      */
     function getLatestPrice() public view returns (int) {
         (
-            uint80 roundID, 
+            uint80 roundID,
             int price,
             uint startedAt,
             uint timeStamp,
